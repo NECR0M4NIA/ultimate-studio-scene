@@ -3,7 +3,7 @@ bl_info = {
     "blender": (4, 3, 0),
     "category": "Scene",
     "author": "NECRO MANIA",
-    "description": "Generates an ultimate studio scene with advanced features."
+    "description": "Generates an ultimate studio scene with advanced features.",
 }
 
 import bpy
@@ -14,77 +14,120 @@ from bpy.props import (
     FloatVectorProperty,
     BoolProperty,
     EnumProperty,
-    IntProperty
+    IntProperty,
 )
+
 
 class OBJECT_OT_UltimateStudioScenePlus(bpy.types.Operator):
     """Create the Ultimate Studio Scene with Animations and Advanced Features"""
+
     bl_idname = "object.create_ultimate_studio_scene_plus"
     bl_label = "Create Ultimate Studio Scene Plus"
-    bl_options = {'REGISTER', 'UNDO'}
+    bl_options = {"REGISTER", "UNDO"}
 
     # Wall and background properties
     wall_color: FloatVectorProperty(
         name="Wall Color",
-        subtype='COLOR',
+        subtype="COLOR",
         default=(0.8, 0.8, 0.8),
-        min=0.0, max=1.0,
-        description="Color of the wall"
+        min=0.0,
+        max=1.0,
+        description="Color of the wall",
     )
     background_gradient: BoolProperty(
         name="Gradient Background",
         default=True,
-        description="Add a gradient background for the scene"
+        description="Add a gradient background for the scene",
     )
 
     # Lighting properties
     animated_lights: BoolProperty(
         name="Animated Lights",
         default=True,
-        description="Animate the lights with movement or intensity changes"
+        description="Animate the lights with movement or intensity changes",
     )
     light_count: IntProperty(
         name="Number of Lights",
         default=5,
         min=1,
         max=20,
-        description="Number of lights in the scene"
+        description="Number of lights in the scene",
     )
     light_color: FloatVectorProperty(
         name="Light Color",
-        subtype='COLOR',
+        subtype="COLOR",
         default=(1.0, 1.0, 1.0),
-        min=0.0, max=1.0,
-        description="Base color of the lights"
+        min=0.0,
+        max=1.0,
+        description="Base color of the lights",
     )
     light_animation_speed: FloatProperty(
         name="Light Animation Speed",
         default=1.0,
         min=0.1,
         max=10.0,
-        description="Speed of light animations"
+        description="Speed of light animations",
     )
 
     # Camera settings
     multiple_cameras: BoolProperty(
         name="Add Multiple Cameras",
         default=True,
-        description="Add several cameras with different angles"
+        description="Add several cameras with different angles",
     )
+    
+    # Ajout d'un ciel dynamique
+    if self.add_hdri:
+        nodes = bpy.context.scene.world.node_tree.nodes
+        env_tex = nodes.new(type="ShaderNodeTexSky")
+        env_tex.sky_type = 'PREETHAM'
+        env_tex.sun_elevation = 0.5
+        links.new(env_tex.outputs["Color"], bg.inputs["Color"])
 
     # Props and objects
     add_random_objects: BoolProperty(
         name="Add Random Objects",
         default=True,
-        description="Add randomly placed objects in the scene"
+        description="Add randomly placed objects in the scene",
     )
     object_count: IntProperty(
         name="Number of Random Objects",
         default=10,
         min=1,
         max=50,
-        description="Number of random objects to add"
+        description="Number of random objects to add",
     )
+    
+        # Effet de dégradé dynamique pour le fond
+    world = bpy.context.scene.world
+    world.use_nodes = True
+    nodes = world.node_tree.nodes
+    links = world.node_tree.links
+
+    # Suppression des nœuds existants
+    for node in nodes:
+        nodes.remove(node)
+
+    # Ajout de nouveaux nœuds
+    bg = nodes.new(type="ShaderNodeBackground")
+    gradient = nodes.new(type="ShaderNodeTexGradient")
+    mapping = nodes.new(type="ShaderNodeMapping")
+    coord = nodes.new(type="ShaderNodeTexCoord")
+    output = nodes.new(type="ShaderNodeOutputWorld")
+
+    # Connexions des nœuds
+    links.new(coord.outputs["Generated"], mapping.inputs["Vector"])
+    links.new(mapping.outputs["Vector"], gradient.inputs["Vector"])
+    links.new(gradient.outputs["Color"], bg.inputs["Color"])
+    links.new(bg.outputs["Background"], output.inputs["Surface"])
+
+    # Animation du dégradé
+    bg.inputs[1].default_value = 1.0  # Intensité
+    gradient.color_ramp.interpolation = 'LINEAR'
+    for i, stop in enumerate(gradient.color_ramp.elements):
+        stop.position = i
+        stop.color = (uniform(0, 1), uniform(0, 1), uniform(0, 1), 1.0)
+
 
     def create_wall_and_floor(self):
         """Create the studio wall and floor"""
@@ -92,9 +135,9 @@ class OBJECT_OT_UltimateStudioScenePlus(bpy.types.Operator):
         bpy.ops.mesh.primitive_plane_add(size=10, location=(0, 0, 0))
         wall = bpy.context.active_object
         wall.name = "Studio Wall"
-        bpy.ops.object.mode_set(mode='EDIT')
+        bpy.ops.object.mode_set(mode="EDIT")
         bpy.ops.mesh.extrude_region_move(TRANSFORM_OT_translate={"value": (0, 0, 5)})
-        bpy.ops.object.mode_set(mode='OBJECT')
+        bpy.ops.object.mode_set(mode="OBJECT")
         wall.location = (0, -5, 2.5)
 
         # Apply wall color
@@ -115,38 +158,44 @@ class OBJECT_OT_UltimateStudioScenePlus(bpy.types.Operator):
             x = uniform(-5, 5)
             y = uniform(-5, 5)
             z = uniform(2, 6)
-            bpy.ops.object.light_add(type='POINT', location=(x, y, z))
+            bpy.ops.object.light_add(type="POINT", location=(x, y, z))
             light = bpy.context.active_object
             light.name = f"Studio Light {i+1}"
             light.data.color = self.light_color
             light.data.energy = 500
-            
+
             if self.animated_lights:
                 frame_start = 1
                 frame_end = 250
                 light.animation_data_create()
-                light.animation_data.action = bpy.data.actions.new(name=f"LightAnim_{i}")
-                fcurve = light.animation_data.action.fcurves.new(data_path="location", index=2)
+                light.animation_data.action = bpy.data.actions.new(
+                    name=f"LightAnim_{i}"
+                )
+                fcurve = light.animation_data.action.fcurves.new(
+                    data_path="location", index=2
+                )
                 keyframe = fcurve.keyframe_points.insert(frame_start, light.location.z)
-                keyframe.interpolation = 'SINE'
-                keyframe = fcurve.keyframe_points.insert(frame_end, light.location.z + sin(pi * self.light_animation_speed))
-                keyframe.interpolation = 'SINE'
+                keyframe.interpolation = "SINE"
+                keyframe = fcurve.keyframe_points.insert(
+                    frame_end, light.location.z + sin(pi * self.light_animation_speed)
+                )
+                keyframe.interpolation = "SINE"
 
     def add_random_objects(self):
         """Add random objects in the scene"""
-        shapes = ['SPHERE', 'CUBE', 'CYLINDER', 'CONE', 'TORUS']
+        shapes = ["SPHERE", "CUBE", "CYLINDER", "CONE", "TORUS"]
         for i in range(self.object_count):
             shape = shapes[i % len(shapes)]
             x, y, z = uniform(-4, 4), uniform(-4, 4), uniform(0, 2)
-            if shape == 'SPHERE':
+            if shape == "SPHERE":
                 bpy.ops.mesh.primitive_uv_sphere_add(location=(x, y, z))
-            elif shape == 'CUBE':
+            elif shape == "CUBE":
                 bpy.ops.mesh.primitive_cube_add(location=(x, y, z))
-            elif shape == 'CYLINDER':
+            elif shape == "CYLINDER":
                 bpy.ops.mesh.primitive_cylinder_add(location=(x, y, z))
-            elif shape == 'CONE':
+            elif shape == "CONE":
                 bpy.ops.mesh.primitive_cone_add(location=(x, y, z))
-            elif shape == 'TORUS':
+            elif shape == "TORUS":
                 bpy.ops.mesh.primitive_torus_add(location=(x, y, z))
 
     def add_cameras(self):
@@ -162,36 +211,41 @@ class OBJECT_OT_UltimateStudioScenePlus(bpy.types.Operator):
         # Create base elements
         self.create_wall_and_floor()
         self.add_lights()
-        
+
         if self.add_random_objects:
             self.add_random_objects()
-        
+
         if self.multiple_cameras:
             self.add_cameras()
 
-        self.report({'INFO'}, "Ultimate Studio Scene Plus created!")
-        return {'FINISHED'}
+        self.report({"INFO"}, "Ultimate Studio Scene Plus created!")
+        return {"FINISHED"}
+
 
 class ULTIMATE_STUDIO_SCENE_PLUS_PT_panel(bpy.types.Panel):
     """Panel for Ultimate Studio Scene Generator Plus"""
+
     bl_label = "Ultimate Studio Scene Generator Plus"
     bl_idname = "ULTIMATE_STUDIO_SCENE_PLUS_PT_panel"
-    bl_space_type = 'VIEW_3D'
-    bl_region_type = 'UI'
-    bl_category = 'Studio Scene'
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "Studio Scene"
 
     def draw(self, context):
         layout = self.layout
         col = layout.column()
         col.operator(OBJECT_OT_UltimateStudioScenePlus.bl_idname)
 
+
 def register():
     bpy.utils.register_class(OBJECT_OT_UltimateStudioScenePlus)
     bpy.utils.register_class(ULTIMATE_STUDIO_SCENE_PLUS_PT_panel)
 
+
 def unregister():
     bpy.utils.unregister_class(OBJECT_OT_UltimateStudioScenePlus)
     bpy.utils.unregister_class(ULTIMATE_STUDIO_SCENE_PLUS_PT_panel)
+
 
 if __name__ == "__main__":
     register()
